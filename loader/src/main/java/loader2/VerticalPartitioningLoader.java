@@ -8,6 +8,7 @@ import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
+import static org.apache.spark.sql.functions.col;
 
 /**
  *
@@ -69,17 +70,21 @@ public class VerticalPartitioningLoader extends TripleTableLoader {
             predtblDS.write().format(hiveTableFormat).saveAsTable(dictionaryTable);
         }
         // 2.2. Create all property tables
+
         String createVPTable;
-        for (PredTbl predtbl : this.predDictionary) {
-            if (this.useHiveQL_TableCreation) { // use HiveQL
+        if (this.useHiveQL_TableCreation) { // use HiveQL
+            for (PredTbl predtbl : this.predDictionary) {
                 createVPTable = String.format(
                         "CREATE TABLE %1$s AS SELECT %2$s, %3$s FROM %4$s WHERE %5$s = '%6$s'",
                         predtbl.getTblName(), tttschema.getColname_subj(),
                         tttschema.getColname_obj(), tttschema.getTblname(),
                         tttschema.getColname_pred(), predtbl.getPred());
                 spark.sql(createVPTable);
-            } else {    // use Spark SQL
-                predtblDS.write().format(hiveTableFormat).saveAsTable(predtbl.getTblName());
+            }
+        } else {    // use Spark SQL
+            Dataset<Row> triplesDS = spark.sql(String.format("SELECT * FROM %1$s", tttschema.getTblname()));
+            for (PredTbl predtbl : this.predDictionary) {
+                triplesDS.select(col("s"), col("o")).filter(col("p").equalTo(predtbl.getPred())).write().format(hiveTableFormat).saveAsTable(predtbl.getTblName());
             }
         }
     }

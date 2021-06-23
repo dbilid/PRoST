@@ -19,42 +19,31 @@ import org.datasyslab.geosparkviz.sql.utils.GeoSparkVizRegistrator;
 
 /**
  * The Main class parses the CLI arguments and calls the executor.
- * <p>
- * Options: -h, --help prints the usage help message. -i, --input <file> HDFS
- * input path of the RDF graph. -o, --output <DBname> output database name. -s,
- * compute statistics
  *
- * @author Matteo Cossu
- * @author Victor Anthony Arrascue Ayala
+ * @author Theofilos Ioannidis
  */
 public class Main {
 
     public static String appName = "PRoST Loader-2";
+    private static final Logger logger = Logger.getLogger(appName);
     private static String input_location;
     private static String outputDB;
     private static boolean dropDB;
     private static String lpStrategies;
     private static String loj4jFileName = "log4j.properties";
-    private static final Logger logger = Logger.getLogger(appName);
-    private static boolean useStatistics = false;
     private static boolean dropDuplicates = true;
     private static boolean generateTT = false;
-    private static boolean generateWPT = false;
     private static boolean generateVP = false;
     private static boolean generateExtVP = false;
-    private static boolean generateDEC = false;
-    private static boolean generatePEC = false;
 
     // options for physical partitioning
     private static boolean ttPartitionedByPred = false;
     private static boolean ttPartitionedBySub = false;
-    private static String statFile;
     private static String dictionaryFile;
     private static String namespacePrefixFile = "";
     private static String asWKTFile = "";
     private static boolean nsPrefixDictEncode = false; // do not encode with Namespace Prefix dictionary
     private static double thresholdExtVP = 0.25;
-    private static String tripleTable = "triples";
 
     private static boolean flagDBExists = false; // DB exists? Assume not!
     private static boolean flagCreateDB = !flagDBExists;  // Create DB!
@@ -69,8 +58,7 @@ public class Main {
         props.load(inStream);
         PropertyConfigurator.configure(props);
         long start = System.currentTimeMillis();
-        /*
-		 * Manage the CLI options
+        /* Manage the CLI options
          */
         final CommandLineParser parser = new PosixParser();
         final Options options = new Options();
@@ -83,14 +71,9 @@ public class Main {
         outputOpt.setRequired(true);
         options.addOption(outputOpt);
 
-        // tioa
         final Option dropDbOpt = new Option("drdb", "dropdb", true, "Drop database.");
         dropDbOpt.setRequired(false);
         options.addOption(dropDbOpt);
-
-        final Option statFileOpt = new Option("sf", "statisticsfile", true, "Statistics Filename.");
-        statFileOpt.setRequired(false);
-        options.addOption(statFileOpt);
 
         final Option dictFileOpt = new Option("df", "dictionaryfile", true, "Dictionary Filename.");
         dictFileOpt.setRequired(false); // required for VP but not for TT
@@ -102,14 +85,12 @@ public class Main {
         namespacePrefixFileOpt.setRequired(false);
         options.addOption(namespacePrefixFileOpt);
 
-        // tioa
-        // Namespace Prefix file in JSON format
+        // WKT properties file
         final Option asWKTFileOpt = new Option("aswkt", "propAsWKT", true, "#asWKT properties file.");
         asWKTFileOpt.setRequired(false);
         options.addOption(asWKTFileOpt);
 
-        // tioa
-        // Controls whether tables are written with Sparql Sql or HiveQL
+        // Controls whether tables are written with Sparql Sql DF API or HiveQL
         final Option HiveQLOpt = new Option("hiveql", "HiveQL", false,
                 "Option for using HiveQL instead of Spark SQL for storing tables.");
         HiveQLOpt.setRequired(false);
@@ -122,13 +103,6 @@ public class Main {
         final Option helpOpt = new Option("h", "help", false, "Print this help.");
         options.addOption(helpOpt);
 
-        final Option statsOpt = new Option("s", "stats", false, "Flag to produce the statistics");
-        options.addOption(statsOpt);
-
-        final Option duplicatesOpt = new Option("dp", "dropDuplicates", true,
-                "Option to remove duplicates from all logical partitioning tables.");
-        options.addOption(duplicatesOpt);
-
         // Settings for physically partitioning some of the tables
         final Option ttpPartPredOpt = new Option("ttp", "ttPartitionedByPredicate", false,
                 "To physically partition the Triple Table by predicate.");
@@ -140,17 +114,6 @@ public class Main {
         ttpPartSubOpt.setRequired(false);
         options.addOption(ttpPartSubOpt);
 
-        final Option wptPartSubOpt = new Option("wpts", "wptPartitionedBySub", false,
-                "To physically partition the Wide Property Table by subject.");
-        wptPartSubOpt.setRequired(false);
-        options.addOption(wptPartSubOpt);
-
-        final Option outputTripleTable = new Option("ott", "outTripleTable", true,
-                "name of triple table output (only for tripleTable)");
-        outputTripleTable.setRequired(false);
-        options.addOption(outputTripleTable);
-
-        // tioa
         final Option hiveTableFormatOpt = new Option("tblfrm", "hiveTableFormat", true,
                 "Hive default table format.");
         hiveTableFormatOpt.setRequired(false);
@@ -180,7 +143,6 @@ public class Main {
             logger.info("Output database set to: " + outputDB);
         }
 
-        // tioa
         // if "dropdb" is missing then the default behaviour is:
         // DB does not exist, therefore create it!
         if (cmd.hasOption("dropdb")) {
@@ -197,35 +159,28 @@ public class Main {
                 logger.info("Use existing database " + outputDB);
             }
         }
-        if (cmd.hasOption("statisticsfile")) {
-            statFile = cmd.getOptionValue("statisticsfile");
-            logger.info("Statistics file: " + statFile);
-        }
+        
         if (cmd.hasOption("dictionaryfile")) {
             dictionaryFile = cmd.getOptionValue("dictionaryfile");
             logger.info("Dictionary file: " + dictionaryFile);
         }
 
-        // tioa
         if (cmd.hasOption("namespaceprefixfile")) {
             namespacePrefixFile = cmd.getOptionValue("namespaceprefixfile");
             nsPrefixDictEncode = true;
             logger.info("Namespace Prefix Filename: " + namespacePrefixFile);
         }
 
-        // tioa
         if (cmd.hasOption("propAsWKT")) {
             asWKTFile = cmd.getOptionValue("propAsWKT");
             logger.info("#asWKT properties file: " + asWKTFile);
         }
 
-        // tioa
         if (cmd.hasOption("HiveQL")) {
             useHiveQL_TableCreation = true; // use HiveQL for table creation
             logger.info("Using HiveQL instead of Spark SQL for storing tables");
         }
 
-        // tioa
         if (cmd.hasOption("hiveTableFormat")) {
             hiveTableFormat = cmd.getOptionValue("hiveTableFormat");
             logger.info("Hive default table format: " + hiveTableFormat);
@@ -239,11 +194,8 @@ public class Main {
 
         // default if a logical partition is not specified is: TT, WPT, and VP.
         if (!cmd.hasOption("logicalPartitionStrategies")) {
-//            generateTT = true;
-//            generateWPT = true;
-//            generateVP = true;
-//            generateDEC = true;
-//            logger.info("Logical strategy used: TT + WPT + VP");
+            generateVP = true;
+            logger.info("Logical strategy used: TT + VP");
         } else {
             lpStrategies = cmd.getOptionValue("logicalPartitionStrategies");
 
@@ -257,20 +209,6 @@ public class Main {
                 generateVP = true;
                 logger.info("Logical strategy used: VP");
             }
-            if (strategies.contains("EXTVP")) {
-                generateVP = true;
-                generateExtVP = true;
-                logger.info("Logical strategy used: VP");
-            }
-            if (strategies.contains("DEC")) {
-                generateDEC = true;
-                logger.info("Logical strategy used: DEC");
-
-            }
-            if (strategies.contains("PEC")) {
-                generatePEC = true;
-                logger.info("Logical strategy used: PEC");
-            }
         }
 
         // Relevant for physical partitioning
@@ -280,7 +218,7 @@ public class Main {
         }
         if (cmd.hasOption("ttPartitionedByPredicate")) {
             ttPartitionedByPred = true;
-            logger.info("g_triple Table will be partitioned by predicate.");
+            logger.info(gttschema.getTblname() + " Table will be partitioned by predicate.");
         }
         if (cmd.hasOption("ttPartitionedBySub")) {
             ttPartitionedBySub = true;
@@ -295,16 +233,6 @@ public class Main {
                 dropDuplicates = false;
             }
             logger.info("Duplicates won't be removed from the tables.");
-        }
-
-        if (cmd.hasOption("stats")) {
-            useStatistics = true;
-            logger.info("Statistics active!");
-
-            if (!generateVP) {
-                logger.info("Logical strategy activated: VP. VP needed to generate statistics.");
-                generateVP = true;
-            }
         }
 
         final SparkSession spark = SparkSession.builder()
@@ -340,27 +268,6 @@ public class Main {
             logger.info("Time in ms to build the Tripletable: " + String.valueOf(executionTime));
         }
 
-//        if (generateDEC) {
-//            startTime = System.currentTimeMillis();
-//            final DictionaryEncoder de_loader
-//                    = new DictionaryEncoder(input_location, outputDB, spark, flagDBExists, flagCreateDB,
-//                            tripleTable);
-//            de_loader.load();
-//            
-//            executionTime = System.currentTimeMillis() - startTime;
-//            logger.info("Time in ms to build the Tripletable: " + String.valueOf(executionTime));
-//        }
-//        
-//        if (generatePEC) {
-//            startTime = System.currentTimeMillis();
-//            final PrefixEncoder pe_loader
-//                    = new PrefixEncoder(input_location, outputDB, spark, flagDBExists, flagCreateDB,
-//                            tripleTable);
-//            pe_loader.load();
-//            
-//            executionTime = System.currentTimeMillis() - startTime;
-//            logger.info("Time in ms to build the Tripletable: " + String.valueOf(executionTime));
-//        }
         if (generateVP) {
             startTime = System.currentTimeMillis();
             final VerticalPartitioningLoader vp_loader

@@ -35,14 +35,7 @@ import org.eclipse.rdf4j.model.vocabulary.RDFS;
 import scala.Tuple2;
 
 /**
- * Class that constructs a triples table. First, the loader creates an external
- * table ("raw"). The data is read using SerDe capabilities and by means of a
- * regular expression. An additional table ("fixed") is created to make sure
- * that only valid triples are passed to the next stages in which other models
- * e.g. Property Table, or Vertical Partitioning are built.
- *
- * @author Matteo Cossu
- * @author Victor Anthony Arrascue Ayala
+ * @author Theofilos Ioannidis
  */
 public class TripleTableLoader extends Loader implements Serializable {
 
@@ -284,6 +277,7 @@ public class TripleTableLoader extends Loader implements Serializable {
         } catch (IOException e) {
             logger.error(e.getMessage());
         }
+//        logger.info("ALARM-DEBUG-0 : rdfRDD after parseDir has " + rdfRDD.count() + " records!");
 
         // get the list of geospatially indexed properties inferred from
         // n-triples files, update-merge in asWKTDict and persist it in Hive
@@ -291,13 +285,14 @@ public class TripleTableLoader extends Loader implements Serializable {
         asWKTDict.persist(spatialPropsRDD.collect());
 
         // mark and then split RDFs to thematic and spatial
+//        logger.info("ALARM-DEBUG-1 : rdfRDD before being mapped to pairs has " + rdfRDD.count() + " records!");
         JavaPairRDD<RDFStatement, Integer> markedRdfRDD = rdfRDD.mapToPair(new MarkThematicGeospatialRDF(asWKTDict.getAsWKTList()));
+//        logger.info("ALARM-DEBUG-2 : markedRdfRDD has " + markedRdfRDD.count() + " records!");
         thematicRDD = markedRdfRDD.flatMap(new FilterTriples(1)); // Filters thematic triples
+//        logger.info("ALARM-DEBUG-3 : thematicRDD has " + thematicRDD.count() + " records!");
         spatialRDD = markedRdfRDD.flatMap(new FilterTriples(2)); // Filters triples needed for spatial indexing
+//        logger.info("ALARM-DEBUG-4 : spatialRDD has " + spatialRDD.count() + " records!");
 
-//        spatialRDD = rdfRDD.filter(new FilterGeoIndxTriples(asWKTDict.getAsWKTList()));
-//        rdfRDD.subtract(spatialRDD);
-//        logger.info("Geospatial triples " + spatialRDD.count());
         // if required, encode RDF statements
         if (createUseNsDict) {
             thematicRDD = thematicRDD.map(new EncodeRDF(nsDict.getNsList()));
@@ -341,9 +336,9 @@ public class TripleTableLoader extends Loader implements Serializable {
         } else {    // use Spark SQL
             dictEncodedRdfDS.write().format(hiveTableFormat).saveAsTable(tttschema.getTblname());
             if (!ttPartitionedByPred) {
-                dictEncodedSpatialRdfDS.write().format(hiveTableFormat).saveAsTable(gttschema.getTblname());
+                dictEncodedSpatialRdfDS.selectExpr("s", "p", "o", "ST_GeomFromWKT(o) AS bwkt").write().format(hiveTableFormat).saveAsTable(gttschema.getTblname());
             } else {
-                dictEncodedSpatialRdfDS.write().format(hiveTableFormat).partitionBy("p").saveAsTable(gttschema.getTblname());
+                dictEncodedSpatialRdfDS.selectExpr("s", "p", "o", "ST_GeomFromWKT(o) AS bwkt").write().format(hiveTableFormat).partitionBy("p").saveAsTable(gttschema.getTblname());
             }
         }
     }
@@ -358,23 +353,23 @@ public class TripleTableLoader extends Loader implements Serializable {
         // Main line of code that performs parsing
         parseDirectory(hdfsInputDir);
 
-//        spark.sql("show tables").show();
-        final String queryAllTriples = String.format("SELECT * FROM %s", tttschema.getTblname());
-        Dataset<Row> allTriples = spark.sql(queryAllTriples);
-//        logger.info(queryAllTriples);
-
-        long noOfTriples = allTriples.count();
-        if (noOfTriples == 0) {
-            logger.error("Either your HDFS path does not contain any files or "
-                    + "no triples were accepted in the given format (nt)");
-            logger.error("The program will stop here.");
-            throw new Exception("Empty HDFS directory or empty files within.");
-        } else {
-            logger.info("Total number of triples loaded: " + noOfTriples);
-        }
-
-        final List<Row> cleanedList = allTriples.limit(10).collectAsList();
-        logger.info("First 10 cleaned triples (less if there are less): "
-                + ((nsDict != null) ? this.nsDict.getTurtlePrefixHeader() : "") + "\n" + cleanedList);
+////        spark.sql("show tables").show();
+//        final String queryAllTriples = String.format("SELECT * FROM %s", tttschema.getTblname());
+//        Dataset<Row> allTriples = spark.sql(queryAllTriples);
+////        logger.info(queryAllTriples);
+//
+//        long noOfTriples = allTriples.count();
+//        if (noOfTriples == 0) {
+//            logger.error("Either your HDFS path does not contain any files or "
+//                    + "no triples were accepted in the given format (nt)");
+//            logger.error("The program will stop here.");
+//            throw new Exception("Empty HDFS directory or empty files within.");
+//        } else {
+//            logger.info("Total number of triples loaded: " + noOfTriples);
+//        }
+//
+//        final List<Row> cleanedList = allTriples.limit(10).collectAsList();
+//        logger.info("First 10 cleaned triples (less if there are less): "
+//                + ((nsDict != null) ? this.nsDict.getTurtlePrefixHeader() : "") + "\n" + cleanedList);
     }
 }
