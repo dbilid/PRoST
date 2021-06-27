@@ -16,7 +16,7 @@ public class DE9IMGeometriesRelationsParser implements java.io.Serializable{
 	
 	public DE9IM parseline(String line) throws Exception {
 		try {
-			String[] myData = line.replaceAll("IM\\(\\(", "").replaceAll("\\)","").split(",");
+			String[] myData = line.replaceAll("IM\\(\\(", "").replaceAll("\\)","").replaceAll("<", "").replaceAll(">", "").split(",");
 			/*need handling
 			if(myData.length!=11) {
 				
