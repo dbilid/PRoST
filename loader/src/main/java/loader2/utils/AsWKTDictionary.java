@@ -82,6 +82,7 @@ public class AsWKTDictionary implements Serializable {
         this.asWKTList.addAll(inferredAsWKTList);
         // persist extra asWKT properties to Hive table
         Dataset<String> asWKTDS = spark.createDataset(asWKTList, Encoders.STRING()).distinct();
+        // Create the aswktprops table and collect statistics 
         if (useHiveQL_TableCreation) { // use HiveQL
             asWKTDS.createOrReplaceTempView("tmp_asWKT");
             spark.sql(String.format(
@@ -90,5 +91,9 @@ public class AsWKTDictionary implements Serializable {
         } else {    // use Spark SQL
             asWKTDS.write().format(hiveTableFormat).saveAsTable(asWKTTableName);
         }
+        logger.info("ANALYZE TABLE " + asWKTTableName + " COMPUTE STATISTICS");
+        spark.sql(String.format(
+                "ANALYZE TABLE %1$s COMPUTE STATISTICS",
+                asWKTTableName));
     }
 }

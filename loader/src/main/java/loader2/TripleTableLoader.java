@@ -304,41 +304,46 @@ public class TripleTableLoader extends Loader implements Serializable {
 
         if (this.useHiveQL_TableCreation) { // use HiveQL
             dictEncodedRdfDS.createOrReplaceTempView("tmp_dictencoded");
+            // Create the Thematic TriplesTable and collect statistics 
             spark.sql(String.format(
                     "CREATE TABLE %1$s AS SELECT * FROM tmp_dictencoded",
                     tttschema.getTblname()));
+            spark.sql(String.format(
+                    "ANALYZE TABLE %1$s COMPUTE STATISTICS",
+                    tttschema.getTblname()));
             dictEncodedSpatialRdfDS.createOrReplaceTempView("tmp_dictencodedaswkt");
             if (!ttPartitionedByPred) {
+                // Create the non-partitioned Spatial TriplesTable and collect statistics s, p 
                 spark.sql(String.format(
                         "CREATE TABLE %1$s AS SELECT s,p,o, ST_GeomFromWKT(o) AS bwkt FROM tmp_dictencodedaswkt",
                         gttschema.getTblname()));
+                spark.sql(String.format(
+                        "ANALYZE TABLE %1$s COMPUTE STATISTICS FOR COLUMNS s,p,o",
+                        gttschema.getTblname()));
             } else {
-                /* Have to create a managed table before INSERT-INTO-SELECT
-                ** to the final table !
-                 */
-                // Load from temporary view to intermediate table
-                spark.sql("CREATE TABLE g_triples_tmp AS SELECT s,p,o, ST_GeomFromWKT(o) AS bwkt FROM tmp_dictencodedaswkt");
-                // Create partitioned table
+                // Create the partitioned Spatial TriplesTable and collect statistics s, p 
                 spark.sql(String.format(
-                        "CREATE TABLE %1$s(s string, o string, bwkt array<tinyint>) PARTITIONED BY (p string)",
+                        "CREATE TABLE %1$s USING HIVE PARTITIONED BY (p) AS SELECT s,o, ST_GeomFromWKT(o) AS bwkt, p FROM tmp_dictencodedaswkt",
                         gttschema.getTblname()));
-                // Load from intermediate table to final table
                 spark.sql(String.format(
-                        "INSERT INTO TABLE %1$s PARTITION(p) SELECT s, o, bwkt, p FROM g_triples_tmp",
+                        "ANALYZE TABLE %1$s PARTITION(p) COMPUTE STATISTICS FOR COLUMNS s,o",
                         gttschema.getTblname()));
-                // Calculate table statistics
-                spark.sql(String.format(
-                        "ANALYZE TABLE %1$s PARTITION(p) COMPUTE STATISTICS",
-                        gttschema.getTblname()));
-                // Drop intermediate table
-                spark.sql("DROP TABLE g_triples_tmp");
             }
         } else {    // use Spark SQL
             dictEncodedRdfDS.write().format(hiveTableFormat).saveAsTable(tttschema.getTblname());
+            spark.sql(String.format(
+                    "ANALYZE TABLE %1$s COMPUTE STATISTICS",
+                    tttschema.getTblname()));
             if (!ttPartitionedByPred) {
                 dictEncodedSpatialRdfDS.selectExpr("s", "p", "o", "ST_GeomFromWKT(o) AS bwkt").write().format(hiveTableFormat).saveAsTable(gttschema.getTblname());
+                spark.sql(String.format(
+                        "ANALYZE TABLE %1$s COMPUTE STATISTICS FOR COLUMNS s,p,o",
+                        gttschema.getTblname()));
             } else {
                 dictEncodedSpatialRdfDS.selectExpr("s", "p", "o", "ST_GeomFromWKT(o) AS bwkt").write().format(hiveTableFormat).partitionBy("p").saveAsTable(gttschema.getTblname());
+                spark.sql(String.format(
+                        "ANALYZE TABLE %1$s PARTITION(p) COMPUTE STATISTICS FOR COLUMNS s,o",
+                        gttschema.getTblname()));
             }
         }
     }

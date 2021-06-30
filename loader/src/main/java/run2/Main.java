@@ -244,7 +244,10 @@ public class Main {
         GeoSparkVizRegistrator.registerAll(spark);
 
         spark.sql("SET hive.default.fileformat=" + hiveTableFormat);
-        spark.sql("set hive.exec.dynamic.partition.mode=nonstrict");
+        spark.sql("SET hive.exec.dynamic.partition=true");
+        spark.sql("SET hive.exec.dynamic.partition.mode=nonstrict");
+        // Enable automatic basic table statistics calculation. DOES NOT WORK!!!
+        // spark.sql("SET hive.stats.autogather=true");
 
         long startTime;
         long executionTime;

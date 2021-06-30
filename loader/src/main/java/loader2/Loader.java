@@ -1,18 +1,9 @@
 package loader2;
 
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FSDataInputStream;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 import org.apache.log4j.Logger;
 import org.apache.spark.sql.SparkSession;
 
-import java.io.FileNotFoundException;
-import java.io.IOException;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Scanner;
-import loader2.configuration.TripleTableSchema;
 import run2.Main;
 
 /**

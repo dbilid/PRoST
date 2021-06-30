@@ -55,12 +55,13 @@ public class VerticalPartitioningLoader extends TripleTableLoader {
                         this.tttschema.getColname_subj(),
                         this.tttschema.getColname_obj(),
                         this.tttschema.getTblname())).cache();
-
+        
         JavaPairRDD<Row, Long> indxRDD = propsDS.javaRDD().zipWithIndex().cache();
         JavaRDD<PredTbl> propsRDD = indxRDD.map(t -> new PredTbl(t._1().getString(0), "prop" + t._2(), t._1().getLong(1), t._1().getLong(2), t._1().getLong(3))).cache();
-
+        
         this.predDictionary = propsRDD.collect();
         Dataset<Row> predtblDS = spark.createDataFrame(propsRDD, PredTbl.class);
+        // Create the propdict table and collect statistics s, p 
         if (this.useHiveQL_TableCreation) { // use HiveQL
             predtblDS.createOrReplaceTempView("tmp_propdict");
             spark.sql(String.format(
@@ -69,8 +70,11 @@ public class VerticalPartitioningLoader extends TripleTableLoader {
         } else {    // use Spark SQL
             predtblDS.write().format(hiveTableFormat).saveAsTable(dictionaryTable);
         }
-        // 2.2. Create all property tables
-
+        logger.info("ANALYZE TABLE " + dictionaryTable + " COMPUTE STATISTICS");
+        spark.sql(String.format(
+                "ANALYZE TABLE %1$s COMPUTE STATISTICS",
+                dictionaryTable));
+        // 2.2. Create all property tables and compute statistics
         String createVPTable;
         if (this.useHiveQL_TableCreation) { // use HiveQL
             for (PredTbl predtbl : this.predDictionary) {
@@ -80,11 +84,19 @@ public class VerticalPartitioningLoader extends TripleTableLoader {
                         tttschema.getColname_obj(), tttschema.getTblname(),
                         tttschema.getColname_pred(), predtbl.getPred());
                 spark.sql(createVPTable);
+                logger.info("ANALYZE TABLE " + predtbl.getTblName() + " COMPUTE STATISTICS FOR COLUMNS s,o");
+                spark.sql(String.format(
+                        "ANALYZE TABLE %1$s COMPUTE STATISTICS FOR COLUMNS s,o",
+                        predtbl.getTblName()));
             }
         } else {    // use Spark SQL
             Dataset<Row> triplesDS = spark.sql(String.format("SELECT * FROM %1$s", tttschema.getTblname()));
             for (PredTbl predtbl : this.predDictionary) {
                 triplesDS.select(col("s"), col("o")).filter(col("p").equalTo(predtbl.getPred())).write().format(hiveTableFormat).saveAsTable(predtbl.getTblName());
+                logger.info("ANALYZE TABLE " + predtbl.getTblName() + " COMPUTE STATISTICS FOR COLUMNS s,o");
+                spark.sql(String.format(
+                        "ANALYZE TABLE %1$s COMPUTE STATISTICS FOR COLUMNS s,o",
+                        predtbl.getTblName()));
             }
         }
     }

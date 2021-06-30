@@ -52,6 +52,7 @@ public class NamespaceDictionary implements Serializable {
         this.hiveTableFormat = hiveTableFormat;
         Dataset<Namespace> prefixDS = spark.read().json(namespacePrefixFile).as(Namespace.Encoder);
         this.nsList = prefixDS.collectAsList();
+        // Create the nsprefixes table and collect statistics         
         if (this.useHiveQL_TableCreation) { // use HiveQL
             prefixDS.createOrReplaceTempView("tmp_nsprefixes");
 //            spark.sql(String.format("CREATE TABLE %1$s(`namespace` string, `uri` string)", nsPrefTableName));
@@ -60,6 +61,10 @@ public class NamespaceDictionary implements Serializable {
         } else {      // use Spark SQL
             prefixDS.write().format(this.hiveTableFormat).saveAsTable(nsPrefTableName);
         }
+        logger.info("ANALYZE TABLE " + nsPrefTableName + " COMPUTE STATISTICS");
+        spark.sql(String.format(
+                "ANALYZE TABLE %1$s COMPUTE STATISTICS",
+                nsPrefTableName));        
         cnt++; // increment the number of dictionaries created
     }
 
