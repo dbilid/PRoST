@@ -29,6 +29,7 @@ public class Main {
 
     private static String input_location;
     private static String relations_location;
+    private static String de9im_output_location;
     private static String outputDB;
     private static String lpStrategies;
     private static String loj4jFileName = "log4j.properties";
@@ -70,6 +71,10 @@ public class Main {
         final Option geometriesDE9IM = new Option("de9im", "DE9IM", true, "HDFS path of the geometries DE9IM relations file.");
         geometriesDE9IM.setRequired(false);
         options.addOption(geometriesDE9IM);        
+        
+        final Option outputDE9IM = new Option("outde9im", "outDE9IM", true, "HDFS path of the file that will contain each spatial predicate number of rows(=true).");
+        outputDE9IM.setRequired(false);
+        options.addOption(outputDE9IM);   
         
         final Option outputOpt = new Option("o", "output", true, "Output database name.");
         outputOpt.setRequired(true);
@@ -141,6 +146,10 @@ public class Main {
         	relations_location = cmd.getOptionValue("DE9IM");
             logger.info("Relations path set to: " + relations_location);
             cacherelations = true;
+        }
+        if (cmd.hasOption("outDE9IM")) {
+        	de9im_output_location = cmd.getOptionValue("outDE9IM");
+            logger.info("DE9IM output path set to: " + de9im_output_location);
         }
         if (cmd.hasOption("output")) {
             outputDB = cmd.getOptionValue("output");
@@ -275,7 +284,7 @@ public class Main {
             startTime = System.currentTimeMillis();
             logger.info(relations_location);
             final DE9IMGeometriesRelationsLoader DE9IM_loader
-                    = new DE9IMGeometriesRelationsLoader(input_location, outputDB, spark,relations_location);
+                    = new DE9IMGeometriesRelationsLoader(input_location, outputDB, spark,relations_location,de9im_output_location);
             DE9IM_loader.load();
             executionTime = System.currentTimeMillis() - startTime;
             logger.info("Time in ms to create geometries relations tables: " + String.valueOf(executionTime));        	
